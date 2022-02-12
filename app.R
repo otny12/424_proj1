@@ -43,14 +43,12 @@ fp$daynames <- wday(fp$newdate, label=TRUE)
 
 # Define UI for application 
 ui <- fluidPage(
-  mainPanel(
-    tabsetPanel(
-      tabPanel("Charts",
+  titlePanel("CTA Ridership"),
   #tophalf shower
   fluidRow(
     column(width=10,
            box(solidHeader = TRUE, status = "primary", width=12,
-               plotOutput("left_chart", height = 400)
+               plotOutput("left_chart", height = 600)
             )
     ),column(2, DT::dataTableOutput("table"))
   ),#end fluidrow
@@ -80,7 +78,7 @@ ui <- fluidPage(
       column(width=10,
            (
              box(solidHeader = TRUE, status = "primary", width = 12,
-                 plotOutput("right_chart", height = 400)
+                 plotOutput("right_chart", height = 600)
              )
            )),column(2, DT::dataTableOutput("table1"))
 
@@ -88,7 +86,7 @@ ui <- fluidPage(
   fluidRow(
     column(2,
            selectInput("select_station1", h3(""), 
-                       choices = c("UIC-Halsted"="uic1", "O'Hare Airport"="oh1","Forest Park"="fp1"), selected = "uic1")),
+                       choices = c("UIC-Halsted"="uic1", "O'Hare Airport"="oh1","Forest Park"="fp1"), selected = "oh1")),
     column(3,
            selectInput("select_year1", h3(""), 
                        choices = years, selected = 2021)),
@@ -102,11 +100,9 @@ ui <- fluidPage(
                         ),
                         selected = "year", inline = TRUE)
     )
-  )
-),
-tabPanel("about", verbatimTextOutput("hello"))
-)
-)
+  ),
+fluidRow(actionButton("action", "About"), verbatimTextOutput("about"))
+
 )#end fluidpage
 
 
@@ -125,7 +121,9 @@ server <- function(input, output) {
   plot1 <-reactive ({  #show barchart from 2001 to 2021 entries
       annual <-  aggregate(upper_plot()$rides, list(upper_plot()$year),sum)
       ggplot(annual, aes(x=Group.1, y=x)) + geom_bar(stat="identity", fill="steelblue") +
-        labs(x="Year", y = "Ridership") +scale_x_discrete(name="Year",limits=years)
+        labs(title = "Ridership from 2001 to 2021 by Year", x="Year", y = "Ridership") +
+        scale_x_discrete(name="Year",limits=years)+
+        scale_y_continuous(labels = comma)
 
     })
 
@@ -133,7 +131,8 @@ server <- function(input, output) {
     #show barchart for eachday in 2021
     y <-subset(upper_plot(), year == input$select_year )
     ggplot(y, aes(x=newdate, y=rides)) + geom_bar(stat="identity", fill="steelblue") +
-      labs(x="Date", y = "Ridership")
+      labs(title = "Ridership from 2001 to 2021 by Day", x="Date", y = "Ridership") +
+      scale_y_continuous(labels = comma)
   })
  
   plot3 <- reactive({
@@ -142,7 +141,9 @@ server <- function(input, output) {
     #show barchart for each month of 2021
     ggplot(monthly, aes(x=Group.1, y=x)) +
       geom_bar(stat="identity", fill="steelblue") +
-      labs(x="Month", y = "Ridership")
+      labs(title = "Monthly Ridership for the Current Year", x="Month", y = "Ridership")+
+      scale_x_discrete(name="Year",limits =month.name)+
+      scale_y_continuous(labels = comma)
   })
   plot4 <- reactive({
     #show barchart of days of the week
@@ -150,24 +151,44 @@ server <- function(input, output) {
     weekdays <- aggregate(y$rides, list(y$daynames),sum) 
     ggplot(weekdays, aes(x=Group.1, y=x)) +
       geom_bar(stat="identity", fill="steelblue") +
-      labs(x="Days of the Week", y="Ridership")
+      labs(Title = "Day of the Week Ridership for the Current Year", x="Days of the Week", y="Ridership")+
+      scale_y_continuous(labels = comma)
   })
   output$table <- DT::renderDataTable({
     tabdat <- switch(input$radio, 
-           year = upper_plot()[, 6:5],
-           day = subset(upper_plot(), year == input$select_year)[, 6:5],
+           year = {
+             p <-upper_plot()
+             names(p)[6] = "Date"
+             names(p)[5] = "Rides"
+             p
+             }[, 6:5],
+           day = {
+             p <-subset(upper_plot(), year == input$select_year)
+             names(p)[6] = "Date"
+             names(p)[5] = "Rides"
+             p
+             }[, 6:5],
            month= {
-             y <-subset(upper_plot(), year == input$select_year )
-             aggregate(y$rides, list(y$month),sum)
-             }[,1:2],
-           week={y <-subset(upper_plot(), year == input$select_year)
-           aggregate(y$rides, list(y$daynames),sum)}[,1:2]
+               y <-subset(upper_plot(), year == input$select_year )
+               months <- aggregate(y$rides, list(y$month),sum)
+             names(months)[1] <- "Month"
+             names(months)[2] <- "Rides"
+             months
+           }[,1:2],
+           week={
+               y <-subset(upper_plot(), year == input$select_year)
+             day <-aggregate(y$rides, list(y$daynames),sum)
+             names(day)[1] <- "Day"
+             names(day)[2] <- "Rides"
+             day
+           }[,1:2]
            )
-    order <- 'desc'
-    if(input$radio == "month")
+    order <- 'asc'
+    if(input$radio == "month" | input$radio=="day")
       order <- 'asc'
     DT::datatable(tabdat,
-      options = list(searching = FALSE, pageLength = 7, lengthChange = FALSE, order = list(list(0, order))),
+      options = list(searching = FALSE, pageLength = 12, lengthChange = FALSE, order = list(list(0, order)),
+                     columnDefs = list(list(className = 'dt-left', targets = 0))),
       rownames=FALSE)
     })
   
@@ -192,14 +213,17 @@ server <- function(input, output) {
   plot5 <-reactive ({  #show barchart from 2001 to 2021 entries
     annual <- aggregate(bottom_plot()$rides, list(bottom_plot()$year),sum) 
     ggplot(annual, aes(x=Group.1, y=x)) + geom_bar(stat="identity", fill="steelblue") +
-      labs(x="Year", y = "Ridership") + scale_x_discrete(name="Year",limits=years)
+      labs(title = "Ridership from 2001 to 2021 by Year", x="Year", y = "Ridership") + 
+      scale_x_discrete(name="Year",limits=years)+
+      scale_y_continuous(labels = comma)
   })
   
   plot6 <- reactive({
     #show barchart for eachday in 2021
     y <-subset(bottom_plot(), year == input$select_year1)
     ggplot(y, aes(x=newdate, y=rides)) + geom_bar(stat="identity", fill="steelblue") +
-      labs(x="Date", y = "Ridership")
+      labs(title = "Ridership from 2001 to 2021 by Day", x="Date", y = "Ridership")+
+      scale_y_continuous(labels = comma)
   })
   
   plot7 <- reactive({
@@ -208,7 +232,9 @@ server <- function(input, output) {
     #show barchart for each month of 2021
     ggplot(monthly, aes(x=Group.1, y=x)) +
       geom_bar(stat="identity", fill="steelblue") +
-      labs(x="Month", y = "Ridership")
+      labs(title = "Monthly Ridership for the Current Year", x="Month", y = "Ridership")+
+      scale_x_discrete(name="Year",limits =month.name)+
+      scale_y_continuous(labels = comma)
   })
   plot8 <- reactive({
     #show barchart of days of the week
@@ -216,24 +242,42 @@ server <- function(input, output) {
     weekdays <- aggregate(y$rides, list(y$daynames),sum) 
     ggplot(weekdays, aes(x=Group.1, y=x)) +
       geom_bar(stat="identity", fill="steelblue") +
-      labs(x="Days of the Week", y="Ridership")
+      labs(Title = "Day of the Week Ridership for the Current Year", x="Days of the Week", y="Ridership")+
+      scale_y_continuous(labels = comma)
   })
   output$table1 <- DT::renderDataTable({
     tabdat <- switch(input$radio1, 
-                     year = bottom_plot()[, 6:5],
-                     day = subset(bottom_plot(), year == input$select_year1)[, 6:5],
-                     month= {
-                       y <-subset(bottom_plot(), year == input$select_year1 )
-                       aggregate(y$rides, list(y$month),sum)
-                     }[,1:2],
-                     week={y <-subset(bottom_plot(), year == input$select_year1)
-                     aggregate(y$rides, list(y$daynames),sum)}[,1:2]
+                      year = {
+                        p <-bottom_plot()
+                        names(p)[6] = "Date"
+                        names(p)[5] = "Rides"
+                        p
+                      }[, 6:5],
+                      day = {
+                        p <-subset(bottom_plot(), year == input$select_year1)
+                        names(p)[6] = "Date"
+                        names(p)[5] = "Rides"
+                        p
+                      }[, 6:5],
+                      month= {
+                        y <-subset(bottom_plot(), year == input$select_year1)
+                        months <- aggregate(y$rides, list(y$month),sum)
+                        names(months)[1] <- "Month"
+                        names(months)[2] <- "Rides"
+                        months
+                      }[,1:2],
+                      week={
+                        y <-subset(bottom_plot(), year == input$select_year1)
+                        day <-aggregate(y$rides, list(y$daynames),sum)
+                        names(day)[1] <- "Day"
+                        names(day)[2] <- "Rides"
+                        day
+                      }[,1:2]
     )
-    order <- 'desc'
-    if(input$radio1 == "month")
-      order <- 'asc'
+    order <- 'asc'
     DT::datatable(tabdat,
-                  options = list(searching = FALSE, pageLength = 7, lengthChange = FALSE, order = list(list(0, order))),
+                  options = list(searching = FALSE, pageLength = 12, lengthChange = FALSE, order = list(list(0, order)),
+                                 columnDefs = list(list(className = 'dt-left', targets = 0))),
                   rownames=FALSE)
   })
   
@@ -244,8 +288,13 @@ server <- function(input, output) {
            month=plot7(),
            week=plot8())
   })
+  output$about<- renderPrint({
+    if(input$action %% 2==1)
+      print("Data provided by Chicago Transit Authority https://data.cityofchicago.org/Transportation/CTA-Ridership-L-Station-Entries-Daily-Totals/5neh-572f Visualization written by Tony Lau  2/12/2022 using Rshiny for CS 424 by Andy Johnson for project 1")
+    else
+    invisible()
+})
 }
-
 
 # Run the application 
 shinyApp(ui = ui, server = server)
